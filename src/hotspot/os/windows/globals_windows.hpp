@@ -37,7 +37,18 @@
                          constraint)                                      \
                                                                           \
 product(bool, UseOSErrorReporting, false,                                 \
-        "Let VM fatal error propagate to the OS (ie. WER on Windows)")
+        "Let VM fatal error propagate to the OS (ie. WER on Windows)")    \
+                                                                          \
+product(bool, ForceTimeHighResolution, false,                             \
+        "Using high time resolution (for Win32 only)")                    \
+                                                                          \
+product(bool, PerfBypassFileSystemCheck, false,                           \
+        "Bypass Win32 file system criteria checks (Windows Only)")        \
+                                                                          \
+product(intx, UnguardOnExecutionViolation, 0,                             \
+        "Unguard page and retry on no-execute fault (Win32 only) "        \
+        "0=off, 1=conservative, 2=aggressive")                            \
+        range(0, 2)                                                       \
 
 // end of RUNTIME_OS_FLAGS
 

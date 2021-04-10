@@ -246,9 +246,6 @@ const intx ObjectAlignmentInBytes = 8;
           "Use large pages if maximum heap is at least this big")           \
           range(0, max_uintx)                                               \
                                                                             \
-  product(bool, ForceTimeHighResolution, false,                             \
-          "Using high time resolution (for Win32 only)")                    \
-                                                                            \
   develop(bool, TracePcPatching, false,                                     \
           "Trace usage of frame::patch_pc")                                 \
                                                                             \
@@ -1841,14 +1838,6 @@ const intx ObjectAlignmentInBytes = 8;
                                                                             \
   product(bool, PerfAllowAtExitRegistration, false,                         \
           "Allow registration of atexit() methods")                         \
-                                                                            \
-  product(bool, PerfBypassFileSystemCheck, false,                           \
-          "Bypass Win32 file system criteria checks (Windows Only)")        \
-                                                                            \
-  product(intx, UnguardOnExecutionViolation, 0,                             \
-          "Unguard page and retry on no-execute fault (Win32 only) "        \
-          "0=off, 1=conservative, 2=aggressive")                            \
-          range(0, 2)                                                       \
                                                                             \
   /* Serviceability Support */                                              \
                                                                             \
