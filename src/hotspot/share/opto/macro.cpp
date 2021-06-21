@@ -2570,6 +2570,94 @@ void PhaseMacroExpand::eliminate_macro_nodes() {
   }
 }
 
+class Phase1MacroNodeExpand : public MacroNodeExpand {
+public:
+  virtual bool do_node(Node* n) {
+    if (n->is_Allocate()) {
+      return false;
+    }
+    switch (n->class_id()) {
+    case Node::Class_Lock:
+      _macro->expand_lock_node(n->as_Lock());
+      break;
+    case Node::Class_Unlock:
+      _macro->expand_unlock_node(n->as_Unlock());
+      break;
+    case Node::Class_ArrayCopy:
+      _macro->expand_arraycopy_node(n->as_ArrayCopy());
+      break;
+    case Node::Class_SubTypeCheck:
+        _macro->expand_subtypecheck_node(n->as_SubTypeCheck());
+      break;
+    default:
+      assert(false, "unknown node type in macro list at phase 1");
+    }
+    return true;
+  }
+}
+
+class Phase2MacroNodeExpand : public MacroNodeExpand {
+public:
+  virtual bool do_node(Node* n) {
+    switch (n->class_id()) {
+    case Node::Class_Allocate:
+      _macro->expand_allocate(n->as_Allocate());
+      break;
+    case Node::Class_AllocateArray:
+      _macro->expand_allocate_array(n->as_AllocateArray());
+      break;
+    default:
+      assert(false, "unknown node type in macro list at phase 2");
+    }
+    return true;
+  }
+}
+
+//----------------------------expand_interested_nodes--------------------
+// Expand some interested nodes.
+void PhaseMacroExpand::expand_interested_nodes(MacroNodeExpand* expander) {
+   while (C->macro_count() > 0) {
+    int macro_count = C->macro_count();
+    Node * n = C->macro_node(macro_count-1);
+    assert(n->is_macro(), "only macro nodes expected here");
+    if (_igvn.type(n) == Type::TOP || (n->in(0) != NULL && n->in(0)->is_top())) {
+      // node is unreachable, so don't try to expand it
+      C->remove_macro_node(n);
+      continue;
+    }
+
+    // Make sure expansion will not cause node limit to be exceeded.
+    // Worst case is a macro node gets expanded into about 200 nodes.
+    // Allow 50% more for optimization.
+    if (C->check_node_count(300, "out of nodes before macro expansion")) {
+      expander->set_failed();
+      return;
+    }
+
+    // Do expanding
+    DEBUG_ONLY(int old_macro_count = C->macro_count();)    
+    if (!expander->do_node(n)) {
+      break;
+    }
+
+    assert(C->macro_count() == (old_macro_count - 1), "expansion must have deleted one node from macro list");
+    if (C->failing()) {
+       expander->set_failed();
+       return;
+    }
+
+    // Clean up the graph so we're less likely to hit the maximum node
+    // limit
+    _igvn.set_delay_transform(false);
+    _igvn.optimize();
+    if (C->failing()) {
+       expander->set_failed();
+       return;
+    }
+    _igvn.set_delay_transform(true);
+  }
+}
+
 //------------------------------expand_macro_nodes----------------------
 //  Returns true if a failure occurred.
 bool PhaseMacroExpand::expand_macro_nodes() {
@@ -2651,51 +2739,10 @@ bool PhaseMacroExpand::expand_macro_nodes() {
   // expand arraycopy "macro" nodes first
   // For ReduceBulkZeroing, we must first process all arraycopy nodes
   // before the allocate nodes are expanded.
-  while (C->macro_count() > 0) {
-    int macro_count = C->macro_count();
-    Node * n = C->macro_node(macro_count-1);
-    assert(n->is_macro(), "only macro nodes expected here");
-    if (_igvn.type(n) == Type::TOP || (n->in(0) != NULL && n->in(0)->is_top())) {
-      // node is unreachable, so don't try to expand it
-      C->remove_macro_node(n);
-      continue;
-    }
-    if (n->is_Allocate()) {
-      break;
-    }
-    // Make sure expansion will not cause node limit to be exceeded.
-    // Worst case is a macro node gets expanded into about 200 nodes.
-    // Allow 50% more for optimization.
-    if (C->check_node_count(300, "out of nodes before macro expansion")) {
-      return true;
-    }
-
-    DEBUG_ONLY(int old_macro_count = C->macro_count();)
-    switch (n->class_id()) {
-    case Node::Class_Lock:
-      expand_lock_node(n->as_Lock());
-      break;
-    case Node::Class_Unlock:
-      expand_unlock_node(n->as_Unlock());
-      break;
-    case Node::Class_ArrayCopy:
-      expand_arraycopy_node(n->as_ArrayCopy());
-      break;
-    case Node::Class_SubTypeCheck:
-      expand_subtypecheck_node(n->as_SubTypeCheck());
-      break;
-    default:
-      assert(false, "unknown node type in macro list");
-    }
-    assert(C->macro_count() == (old_macro_count - 1), "expansion must have deleted one node from macro list");
-    if (C->failing())  return true;
-
-    // Clean up the graph so we're less likely to hit the maximum node
-    // limit
-    _igvn.set_delay_transform(false);
-    _igvn.optimize();
-    if (C->failing())  return true;
-    _igvn.set_delay_transform(true);
+  Phase1MacroNodeExpand phase1(this);
+  expand_interested_nodes(&phase1);
+  if (phase1.is_failed()) {
+    return true;
   }
 
   // All nodes except Allocate nodes are expanded now. There could be
@@ -2704,42 +2751,11 @@ bool PhaseMacroExpand::expand_macro_nodes() {
 
   // expand "macro" nodes
   // nodes are removed from the macro list as they are processed
-  while (C->macro_count() > 0) {
-    int macro_count = C->macro_count();
-    Node * n = C->macro_node(macro_count-1);
-    assert(n->is_macro(), "only macro nodes expected here");
-    if (_igvn.type(n) == Type::TOP || (n->in(0) != NULL && n->in(0)->is_top())) {
-      // node is unreachable, so don't try to expand it
-      C->remove_macro_node(n);
-      continue;
-    }
-    // Make sure expansion will not cause node limit to be exceeded.
-    // Worst case is a macro node gets expanded into about 200 nodes.
-    // Allow 50% more for optimization.
-    if (C->check_node_count(300, "out of nodes before macro expansion")) {
-      return true;
-    }
-    switch (n->class_id()) {
-    case Node::Class_Allocate:
-      expand_allocate(n->as_Allocate());
-      break;
-    case Node::Class_AllocateArray:
-      expand_allocate_array(n->as_AllocateArray());
-      break;
-    default:
-      assert(false, "unknown node type in macro list");
-    }
-    assert(C->macro_count() < macro_count, "must have deleted a node from macro list");
-    if (C->failing())  return true;
-
-    // Clean up the graph so we're less likely to hit the maximum node
-    // limit
-    _igvn.set_delay_transform(false);
-    _igvn.optimize();
-    if (C->failing())  return true;
-    _igvn.set_delay_transform(true);
+  Phase2MacroNodeExpand phase1(this);
+  expand_interested_nodes(&phase2);
+  if (phase2.is_failed()) {
+    return true;
   }
 
-  _igvn.set_delay_transform(false);
   return false;
 }

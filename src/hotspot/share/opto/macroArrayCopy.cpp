@@ -64,10 +64,6 @@ Node* PhaseMacroExpand::array_element_address(Node* ary, Node* idx, BasicType el
   return basic_plus_adr(ary, base, scale);
 }
 
-Node* PhaseMacroExpand::ConvI2L(Node* offset) {
-  return transform_later(new ConvI2LNode(offset));
-}
-
 Node* PhaseMacroExpand::make_leaf_call(Node* ctrl, Node* mem,
                                        const TypeFunc* call_type, address call_addr,
                                        const char* call_name,

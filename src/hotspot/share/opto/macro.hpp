@@ -35,6 +35,18 @@ class  Node;
 class  PhaseIterGVN;
 
 class PhaseMacroExpand : public Phase {
+  class MacroNodeExpand {
+    bool _failed;
+    PhaseMacroExpand* _macro;
+  public:
+    NodeExpand(PhaseMacroExpand* macro) : _macro(macro), _failed(false) {}
+    // Expand interested nodes, return false to stop further expansion
+    virtual bool do_node(Node* n) = 0;
+
+    void set_failed() { _failed = true; }
+    bool is_failed(){ return _failed; }
+  }
+
 private:
   PhaseIterGVN &_igvn;
 
@@ -114,7 +126,6 @@ private:
   // More helper methods modeled after GraphKit for array copy
   void insert_mem_bar(Node** ctrl, Node** mem, int opcode, Node* precedent = NULL);
   Node* array_element_address(Node* ary, Node* idx, BasicType elembt);
-  Node* ConvI2L(Node* offset);
 
   // helper methods modeled after LibraryCallKit for array copy
   Node* generate_guard(Node** ctrl, Node* test, RegionNode* region, float true_prob);
@@ -205,6 +216,7 @@ public:
     _igvn.set_delay_transform(true);
   }
   void eliminate_macro_nodes();
+  void expand_interested_nodes(MacroNodeExpand* expander);
   bool expand_macro_nodes();
 
   PhaseIterGVN &igvn() const { return _igvn; }
